@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Face Verification System</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f2f5;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .video-container, .upload-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .video-feed {
+            width: 100%;
+            border-radius: 5px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .upload-area.dragover {
+            background-color: #e1f5fe;
+            border-color: #2196f3;
+        }
+        .button {
+            background-color: #2196f3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .button:hover {
+            background-color: #1976d2;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .verified {
+            background-color: #c8e6c9;
+            color: #2e7d32;
+        }
+        .not-verified {
+            background-color: #ffcdd2;
+            color: #c62828;
+        }
+    </style>
+</head>
+<body>
+    <h1>Face Verification System</h1>
+    
+    <div class="container">
+        <div class="video-container">
+            <h2>Live Camera Feed</h2>
+            <img src="{{ url_for('video_feed') }}" class="video-feed">
+        </div>
+        
+        <div class="upload-container">
+            <h2>Reference Image</h2>
+            <div class="upload-area" id="dropZone">
+                <p>Drag and drop an image here or click to upload</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+                <button class="button" onclick="document.getElementById('fileInput').click()">
+                    Upload Image
+                </button>
+            </div>
+            <div id="uploadedImage"></div>
+            <button class="button" id="verifyButton" style="display: none;">
+                Verify Face
+            </button>
+            <div id="result" class="result" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let uploadedFileName = null;
+
+        // Drag and drop handling
+        const dropZone = document.getElementById('dropZone');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, highlight, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, unhighlight, false);
+        });
+
+        function highlight(e) {
+            dropZone.classList.add('dragover');
+        }
+
+        function unhighlight(e) {
+            dropZone.classList.remove('dragover');
+        }
+
+        dropZone.addEventListener('drop', handleDrop, false);
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        // File input handling
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            handleFiles(this.files);
+        });
+
+        function handleFiles(files) {
+            const file = files[0];
+            if (file && file.type.startsWith('image/')) {
+                uploadFile(file);
+            }
+        }
+
+        function uploadFile(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                uploadedFileName = data.filename;
+                displayUploadedImage(file);
+                document.getElementById('verifyButton').style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Upload failed');
+            });
+        }
+
+        function displayUploadedImage(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('uploadedImage').innerHTML = `
+                    <img src="${e.target.result}" style="max-width: 100%; margin-top: 20px; border-radius: 5px;">
+                `;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        // Verification handling
+        document.getElementById('verifyButton').addEventListener('click', function() {
+            if (!uploadedFileName) {
+                alert('Please upload an image first');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('uploaded_image', uploadedFileName);
+
+            fetch('/verify', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                
+                const resultDiv = document.getElementById('result');
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result ' + (data.verified ? 'verified' : 'not-verified');
+                
+                if (data.verified) {
+                    resultDiv.innerHTML = `
+                        <h3>✓ Verified</h3>
+                        <p>Welcome, ${data.name}!</p>
+                        <p>Confidence: ${((1 - data.distance) * 100).toFixed(2)}%</p>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <h3>✗ Not Verified</h3>
+                        <p>Face does not match reference image.</p>
+                        <p>Similarity: ${((1 - data.distance) * 100).toFixed(2)}%</p>
+                    `;
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Verification failed');
+            });
+        });
+    </script>
+</body>
+</html>
