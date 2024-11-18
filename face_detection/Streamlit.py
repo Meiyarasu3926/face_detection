@@ -1,212 +1,681 @@
+# import streamlit as st
+# import cv2
+# import os
+# import numpy as np
+# import pandas as pd
+# from datetime import datetime
+# from deepface import DeepFace
+# import tempfile
+
+# # Set up directories
+# UPLOAD_DIR = "registered_faces"
+# os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# # Define the expected columns for each CSV file
+# REGISTERED_USERS_COLUMNS = [
+#     'employee_id', 'name', 'registered_gender', 'gender_confidence', 
+#     'image_path', 'registration_date'
+# ]
+
+# ATTENDANCE_LOG_COLUMNS = [
+#     'employee_id', 'name', 'registered_gender', 'verified_gender',
+#     'gender_confidence', 'confidence', 'timestamp'
+# ]
+
+# # Initialize Streamlit session state
+# if 'registered_users' not in st.session_state:
+#     st.session_state.registered_users = {}
+
+# def initialize_csv_files():
+#     """Initialize CSV files with correct headers if they don't exist"""
+#     if not os.path.exists('registered_users.csv'):
+#         pd.DataFrame(columns=REGISTERED_USERS_COLUMNS).to_csv('registered_users.csv', index=False)
+#     if not os.path.exists('attendance_log.csv'):
+#         pd.DataFrame(columns=ATTENDANCE_LOG_COLUMNS).to_csv('attendance_log.csv', index=False)
+
+# def load_registered_users():
+#     """Load registered users from CSV"""
+#     try:
+#         if os.path.exists('registered_users.csv'):
+#             df = pd.read_csv('registered_users.csv')
+#             if len(df) > 0:
+#                 return dict(zip(df['employee_id'], df.to_dict('records')))
+#         return {}
+#     except Exception as e:
+#         st.error(f"Error loading registered users: {str(e)}")
+#         # Initialize a new CSV file with correct headers
+#         initialize_csv_files()
+#         return {}
+
+# def save_to_csv(data, filename, mode='a'):
+#     """Save data to CSV with proper column handling"""
+#     try:
+#         df_new = pd.DataFrame([data])
+        
+#         if os.path.exists(filename) and mode == 'a':
+#             df_existing = pd.read_csv(filename)
+            
+#             # Ensure all required columns exist
+#             for col in df_new.columns:
+#                 if col not in df_existing.columns:
+#                     df_existing[col] = None
+            
+#             # Append new data
+#             df_updated = pd.concat([df_existing, df_new], ignore_index=True)
+#             df_updated.to_csv(filename, index=False)
+#         else:
+#             df_new.to_csv(filename, index=False)
+#     except Exception as e:
+#         st.error(f"Error saving to CSV: {str(e)}")
+#         # Initialize the file with correct headers
+#         if filename == 'registered_users.csv':
+#             pd.DataFrame(columns=REGISTERED_USERS_COLUMNS).to_csv(filename, index=False)
+#         elif filename == 'attendance_log.csv':
+#             pd.DataFrame(columns=ATTENDANCE_LOG_COLUMNS).to_csv(filename, index=False)
+
+# def get_dominant_gender(gender_dict):
+#     """Extract dominant gender from DeepFace analysis"""
+#     if isinstance(gender_dict, dict):
+#         dominant_gender = max(gender_dict.items(), key=lambda x: float(str(x[1])))[0]
+#         confidence = float(str(gender_dict[dominant_gender]))
+#         return dominant_gender, confidence
+#     return str(gender_dict), None
+
+# def analyze_face(image):
+#     """Analyze face for demographics"""
+#     try:
+#         if len(image.shape) == 3:
+#             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+#         analysis = DeepFace.analyze(
+#             img_path=image,
+#             actions=['gender'],
+#             enforce_detection=True,
+#             detector_backend='mtcnn'
+#         )
+#         result = analysis[0] if isinstance(analysis, list) else analysis
+#         gender, confidence = get_dominant_gender(result['gender'])
+        
+#         return {
+#             'gender': gender,
+#             'gender_confidence': confidence
+#         }
+#     except Exception as e:
+#         st.error(f"Face analysis failed: {str(e)}")
+#         return None
+
+# def enhanced_spoof_detection(frame):
+#     """Enhanced spoof detection using multiple techniques"""
+#     gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+#     laplacian_var = cv2.Laplacian(gray_frame, cv2.CV_64F).var()
+#     color_var = np.sum([cv2.Laplacian(frame[:,:,i], cv2.CV_64F).var() for i in range(3)])
+#     edges = cv2.Canny(gray_frame, 100, 200)
+#     edge_density = np.mean(edges)
+#     blur = cv2.GaussianBlur(gray_frame, (5, 5), 0)
+#     moire = np.abs(gray_frame.astype(np.float32) - blur.astype(np.float32))
+#     moire_score = np.mean(moire)
+
+#     return (
+#         laplacian_var > 100 and
+#         color_var > 300 and
+#         edge_density > 10 and
+#         moire_score < 10
+#     )
+
+# def register_new_employee():
+#     """Register a new employee using only file upload"""
+#     st.title("🏢 Company Attendance System")
+#     st.header("👤 Register New Employee")
+
+#     employee_id = st.text_input("Enter Employee ID")
+#     employee_name = st.text_input("Enter Employee Name")
+    
+#     if not employee_id or not employee_name:
+#         st.warning("Please enter both Employee ID and Name")
+#         return
+
+#     uploaded_file = st.file_uploader(
+#         "Upload Registration Photo (clear front-facing photo)", 
+#         type=['jpg', 'jpeg', 'png']
+#     )
+    
+#     if uploaded_file:
+#         file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+#         image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+        
+#         analysis = analyze_face(image)
+#         if analysis is None:
+#             st.error("No clear face detected in the image. Please upload a clear, front-facing photo.")
+#             return
+
+#         temp_path = os.path.join(UPLOAD_DIR, f"{employee_id}.jpg")
+#         cv2.imwrite(temp_path, image)
+
+#         employee_data = {
+#             'employee_id': employee_id,
+#             'name': employee_name,
+#             'registered_gender': analysis['gender'],
+#             'gender_confidence': analysis.get('gender_confidence', 100),
+#             'image_path': temp_path,
+#             'registration_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#         }
+
+#         st.session_state.registered_users[employee_id] = employee_data
+#         save_to_csv(employee_data, 'registered_users.csv')
+
+#         st.success(f"Employee {employee_name} registered successfully!")
+#         st.write("### Detected Information:")
+#         st.write(f"- Gender: {analysis['gender']} ({analysis.get('gender_confidence', 100):.2f}% confidence)")
+#         st.image(uploaded_file, caption=f"Registration Photo - {employee_name}")
+
+# def verify_employee():
+#     """Verify employee attendance using live camera with anti-spoofing"""
+#     st.title("🏢 Company Attendance System")
+#     st.header("📸 Live Verification")
+
+#     employee_id = st.text_input("Enter Employee ID")
+
+#     if not employee_id:
+#         st.warning("Please enter an Employee ID")
+#         return
+
+#     if employee_id not in st.session_state.registered_users:
+#         st.error("Employee ID not found. Please register first.")
+#         return
+
+#     employee_data = st.session_state.registered_users[employee_id]
+#     st.write(f"Verifying identity for: {employee_data['name']}")
+
+#     FRAME_WINDOW = st.image([])
+#     camera = cv2.VideoCapture(0)
+
+#     verification_button = st.button("Verify Identity")
+    
+#     try:
+#         while True:
+#             ret, frame = camera.read()
+#             if not ret:
+#                 st.error("Camera not working. Please check your device.")
+#                 break
+            
+#             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+#             FRAME_WINDOW.image(frame, channels="RGB")
+
+#             if verification_button:
+#                 if not enhanced_spoof_detection(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)):
+#                     st.error("Spoof detected! Please use a real face, not a photo or screen.")
+#                     break
+
+#                 temp_dir = tempfile.mkdtemp()
+#                 temp_path = os.path.join(temp_dir, "capture.jpg")
+#                 cv2.imwrite(temp_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+#                 try:
+#                     result = DeepFace.verify(
+#                         img1_path=employee_data['image_path'],
+#                         img2_path=temp_path,
+#                         enforce_detection=True,
+#                         detector_backend='mtcnn'
+#                     )
+
+#                     live_analysis = analyze_face(frame)
+
+#                     if result['verified']:
+#                         st.success("Identity Verified Successfully! ✅")
+                        
+#                         attendance_data = {
+#                             'employee_id': employee_id,
+#                             'name': employee_data['name'],
+#                             'registered_gender': employee_data['registered_gender'],
+#                             'verified_gender': live_analysis['gender'] if live_analysis else 'Unknown',
+#                             'gender_confidence': live_analysis.get('gender_confidence', 0) if live_analysis else 0,
+#                             'confidence': (1 - result['distance']) * 100,
+#                             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+#                         }
+                        
+#                         save_to_csv(attendance_data, 'attendance_log.csv')
+                        
+#                         st.write("### Verification Details")
+#                         st.write(f"- Name: {employee_data['name']}")
+#                         st.write(f"- Registered Gender: {employee_data['registered_gender']}")
+#                         if live_analysis:
+#                             st.write(f"- Verified Gender: {live_analysis['gender']} "
+#                                    f"({live_analysis.get('gender_confidence', 100):.2f}% confidence)")
+#                         st.write(f"- Verification Confidence: {attendance_data['confidence']:.2f}%")
+#                         st.write(f"- Timestamp: {attendance_data['timestamp']}")
+#                     else:
+#                         st.error("Verification Failed! Identity mismatch. ❌")
+#                 except Exception as e:
+#                     st.error(f"Verification failed: {str(e)}")
+#                 finally:
+#                     os.remove(temp_path)
+#                 break
+#     finally:
+#         camera.release()
+
+# def view_attendance():
+#     """View attendance records"""
+#     st.title("🏢 Company Attendance System")
+#     st.header("📊 Attendance Records")
+
+#     if os.path.exists('attendance_log.csv'):
+#         try:
+#             df = pd.read_csv('attendance_log.csv')
+            
+#             # Add filters
+#             st.subheader("Filters")
+#             col1, col2 = st.columns(2)
+            
+#             # Date filter
+#             with col1:
+#                 selected_date = st.date_input("Select Date", datetime.now())
+            
+#             # Gender filter
+#             with col2:
+#                 gender_column = 'registered_gender'
+#                 if gender_column in df.columns and not df[gender_column].empty:
+#                     selected_gender = st.selectbox(
+#                         "Select Gender",
+#                         ['All'] + df[gender_column].dropna().unique().tolist()
+#                     )
+#                 else:
+#                     selected_gender = 'All'
+#                     st.info("Gender information not available in records.")
+            
+#             # Filter the dataframe
+#             filtered_df = df.copy()
+            
+#             # Date filtering
+#             if 'timestamp' in filtered_df.columns:
+#                 filtered_df['date'] = pd.to_datetime(filtered_df['timestamp']).dt.date
+#                 filtered_df = filtered_df[filtered_df['date'] == selected_date]
+            
+#             # Gender filtering
+#             if selected_gender != 'All' and gender_column in filtered_df.columns:
+#                 filtered_df = filtered_df[filtered_df[gender_column] == selected_gender]
+            
+#             # Display filtered results
+#             st.dataframe(filtered_df)
+
+#             # Download button
+#             csv = filtered_df.to_csv(index=False)
+#             st.download_button(
+#                 label="Download Filtered Attendance Log",
+#                 data=csv,
+#                 file_name=f"attendance_log_{selected_date}.csv",
+#                 mime="text/csv"
+#             )
+            
+#             # Display statistics
+#             st.subheader("Daily Statistics")
+#             st.write(f"Total Attendance: {len(filtered_df)}")
+            
+#             if gender_column in filtered_df.columns and not filtered_df[gender_column].empty:
+#                 st.write("Gender Distribution:")
+#                 st.write(filtered_df[gender_column].value_counts())
+#         except Exception as e:
+#             st.error(f"Error reading attendance log: {str(e)}")
+#             initialize_csv_files()
+#     else:
+#         st.info("No attendance records found.")
+#         initialize_csv_files()
+
+# def main():
+#     """Main app logic"""
+#     st.set_page_config(page_title="Company Attendance System", page_icon="🏢")
+    
+#     # Initialize CSV files if they don't exist
+#     initialize_csv_files()
+    
+#     if 'registered_users' not in st.session_state or not st.session_state.registered_users:
+#         st.session_state.registered_users = load_registered_users()
+
+#     menu = st.sidebar.radio(
+#         "Navigation",
+#         ["Register Employee", "Verify Attendance", "View Attendance Log"]
+#     )
+
+#     if menu == "Register Employee":
+#         register_new_employee()
+#     elif menu == "Verify Attendance":
+#         verify_employee()
+#     elif menu == "View Attendance Log":
+#         view_attendance()
+
+# if __name__ == "__main__":
+#     main()
+
+# ---------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 import streamlit as st
 import cv2
-import numpy as np
-from deepface import DeepFace
 import os
+import numpy as np
+import pandas as pd
 from datetime import datetime
-import base64
-from werkzeug.utils import secure_filename
-from PIL import Image
+from deepface import DeepFace
 import tempfile
-import time
 
-# Set page config for a wider layout
-st.set_page_config(layout="wide", page_title="Face Verification System")
+# Set up directories
+UPLOAD_DIR = "registered_faces"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Custom CSS for better UI
-st.markdown("""
-    <style>
-    .stButton>button {
-        width: 100%;
-        height: 3em;
-        margin: 1em 0;
-    }
-    .verification-results {
-        padding: 1em;
-        border-radius: 0.5em;
-        margin: 1em 0;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# Define the expected columns for each CSV file
+REGISTERED_USERS_COLUMNS = [
+    'employee_id', 'name', 'registered_gender', 'gender_confidence', 
+    'image_path', 'registration_date'
+]
 
-# Initialize session state
-if 'camera' not in st.session_state:
-    st.session_state.camera = cv2.VideoCapture(0)
-if 'verification_history' not in st.session_state:
-    st.session_state.verification_history = []
+ATTENDANCE_LOG_COLUMNS = [
+    'employee_id', 'name', 'registered_gender', 'verified_gender',
+    'gender_confidence', 'confidence', 'timestamp'
+]
 
-# Configure upload folder
-UPLOAD_FOLDER = 'uploads'
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
+# Initialize Streamlit session state
+if 'registered_users' not in st.session_state:
+    st.session_state.registered_users = {}
+
+def initialize_csv_files():
+    """Initialize CSV files with correct headers if they don't exist"""
+    if not os.path.exists('registered_users.csv'):
+        pd.DataFrame(columns=REGISTERED_USERS_COLUMNS).to_csv('registered_users.csv', index=False)
+    if not os.path.exists('attendance_log.csv'):
+        pd.DataFrame(columns=ATTENDANCE_LOG_COLUMNS).to_csv('attendance_log.csv', index=False)
+
+def load_registered_users():
+    """Load registered users from CSV"""
+    try:
+        if os.path.exists('registered_users.csv'):
+            df = pd.read_csv('registered_users.csv')
+            if len(df) > 0:
+                return dict(zip(df['employee_id'], df.to_dict('records')))
+        return {}
+    except:
+        initialize_csv_files()
+        return {}
+
+def save_to_csv(data, filename):
+    """Save data to CSV with proper column handling"""
+    try:
+        df_new = pd.DataFrame([data])
+        if os.path.exists(filename):
+            # Read existing data
+            try:
+                df_existing = pd.read_csv(filename)
+            except:
+                df_existing = pd.DataFrame(columns=df_new.columns)
+            
+            # Combine and save
+            df_updated = pd.concat([df_existing, df_new], ignore_index=True)
+            df_updated.to_csv(filename, index=False)
+        else:
+            df_new.to_csv(filename, index=False)
+    except:
+        if filename == 'registered_users.csv':
+            pd.DataFrame(columns=REGISTERED_USERS_COLUMNS).to_csv(filename, index=False)
+        else:
+            pd.DataFrame(columns=ATTENDANCE_LOG_COLUMNS).to_csv(filename, index=False)
 
 def get_dominant_gender(gender_dict):
-    """Extract dominant gender from DeepFace gender dictionary"""
-    return max(gender_dict.items(), key=lambda x: x[1])[0]
+    """Extract dominant gender from DeepFace analysis"""
+    if isinstance(gender_dict, dict):
+        dominant_gender = max(gender_dict.items(), key=lambda x: float(str(x[1])))[0]
+        confidence = float(str(gender_dict[dominant_gender]))
+        return dominant_gender, confidence
+    return str(gender_dict), None
 
-def format_gender_info(gender_dict):
-    """Format gender probabilities into a readable string"""
-    dominant = get_dominant_gender(gender_dict)
-    probability = gender_dict[dominant]
-    return f"{dominant} ({probability:.1f}%)"
-
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg'}
-
-def capture_frame():
-    """Capture a frame from the webcam"""
-    success, frame = st.session_state.camera.read()
-    if success:
-        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    return None
-
-def analyze_face(image_path):
-    """Analyze face to get demographic information"""
+def analyze_face(image):
+    """Analyze face for demographics"""
     try:
-        result = DeepFace.analyze(
-            img_path=image_path,
-            actions=['age', 'gender', 'race', 'emotion'],
-            enforce_detection=False
+        if len(image.shape) == 3:
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+        analysis = DeepFace.analyze(
+            img_path=image,
+            actions=['gender'],
+            enforce_detection=True,
+            detector_backend='mtcnn'
         )
-        result = result[0] if isinstance(result, list) else result
+        result = analysis[0] if isinstance(analysis, list) else analysis
+        gender, confidence = get_dominant_gender(result['gender'])
         
-        # Process the gender result
-        if isinstance(result['gender'], dict):
-            result['gender_dict'] = result['gender']
-            result['gender'] = get_dominant_gender(result['gender'])
-        
-        return result
+        return {
+            'gender': gender,
+            'gender_confidence': confidence
+        }
     except Exception as e:
-        st.error(f"Error during face analysis: {str(e)}")
+        st.error("No clear face detected. Please try again.")
         return None
 
-def verify_faces(uploaded_image_path, current_frame):
-    """Verify faces between uploaded image and current frame"""
-    try:
-        # Save current frame temporarily
-        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-            temp_frame_path = temp_file.name
-            current_frame_bgr = cv2.cvtColor(current_frame, cv2.COLOR_RGB2BGR)
-            cv2.imwrite(temp_frame_path, current_frame_bgr)
+def enhanced_spoof_detection(frame):
+    """Enhanced spoof detection using multiple techniques"""
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    
+    laplacian_var = cv2.Laplacian(gray_frame, cv2.CV_64F).var()
+    color_var = np.sum([cv2.Laplacian(frame[:,:,i], cv2.CV_64F).var() for i in range(3)])
+    edges = cv2.Canny(gray_frame, 100, 200)
+    edge_density = np.mean(edges)
+    blur = cv2.GaussianBlur(gray_frame, (5, 5), 0)
+    moire = np.abs(gray_frame.astype(np.float32) - blur.astype(np.float32))
+    moire_score = np.mean(moire)
 
-        # Verify faces
-        result = DeepFace.verify(
-            img1_path=uploaded_image_path,
-            img2_path=temp_frame_path,
-            enforce_detection=False
-        )
+    return (
+        laplacian_var > 100 and
+        color_var > 300 and
+        edge_density > 10 and
+        moire_score < 10
+    )
+
+def register_new_employee():
+    """Register a new employee using only file upload"""
+    st.title("🏢 Company Attendance System")
+    st.header("👤 Register New Employee")
+
+    employee_id = st.text_input("Enter Employee ID")
+    employee_name = st.text_input("Enter Employee Name")
+    
+    if not employee_id or not employee_name:
+        st.warning("Please enter both Employee ID and Name")
+        return
+
+    uploaded_file = st.file_uploader(
+        "Upload Registration Photo (clear front-facing photo)", 
+        type=['jpg', 'jpeg', 'png']
+    )
+    
+    if uploaded_file:
+        file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
+        image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
         
-        # Get additional face analysis
-        analysis = analyze_face(temp_frame_path)
+        analysis = analyze_face(image)
+        if analysis is None:
+            return
 
-        # Clean up temporary file
-        os.remove(temp_frame_path)
+        temp_path = os.path.join(UPLOAD_DIR, f"{employee_id}.jpg")
+        cv2.imwrite(temp_path, image)
 
-        if analysis:
-            result.update({
-                'age': analysis['age'],
-                'gender': analysis['gender'],
-                'gender_dict': analysis.get('gender_dict', {}),
-                'dominant_race': analysis['dominant_race'],
-                'dominant_emotion': analysis['dominant_emotion']
-            })
+        employee_data = {
+            'employee_id': employee_id,
+            'name': employee_name,
+            'registered_gender': analysis['gender'],
+            'gender_confidence': analysis.get('gender_confidence', 100),
+            'image_path': temp_path,
+            'registration_date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
 
-        return result
-    except Exception as e:
-        st.error(f"Error during face verification: {str(e)}")
-        return None
+        st.session_state.registered_users[employee_id] = employee_data
+        save_to_csv(employee_data, 'registered_users.csv')
+
+        st.success(f"Employee {employee_name} registered successfully!")
+        st.write("### Detected Information:")
+        st.write(f"- Gender: {analysis['gender']} ({analysis.get('gender_confidence', 100):.2f}% confidence)")
+        st.image(uploaded_file, caption=f"Registration Photo - {employee_name}")
+
+def verify_employee():
+    """Verify employee attendance using live camera with anti-spoofing"""
+    st.title("🏢 Company Attendance System")
+    st.header("📸 Live Verification")
+
+    employee_id = st.text_input("Enter Employee ID")
+
+    if not employee_id:
+        st.warning("Please enter an Employee ID")
+        return
+
+    if employee_id not in st.session_state.registered_users:
+        st.error("Employee ID not found. Please register first.")
+        return
+
+    employee_data = st.session_state.registered_users[employee_id]
+    st.write(f"Verifying identity for: {employee_data['name']}")
+
+    FRAME_WINDOW = st.image([])
+    camera = cv2.VideoCapture(0)
+
+    verification_button = st.button("Verify Identity")
+    
+    try:
+        while True:
+            ret, frame = camera.read()
+            if not ret:
+                st.error("Camera not working. Please check your device.")
+                break
+            
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            FRAME_WINDOW.image(frame, channels="RGB")
+
+            if verification_button:
+                if not enhanced_spoof_detection(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)):
+                    st.error("Spoof detected! Please use a real face, not a photo or screen.")
+                    break
+
+                temp_dir = tempfile.mkdtemp()
+                temp_path = os.path.join(temp_dir, "capture.jpg")
+                cv2.imwrite(temp_path, cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+                try:
+                    result = DeepFace.verify(
+                        img1_path=employee_data['image_path'],
+                        img2_path=temp_path,
+                        enforce_detection=True,
+                        detector_backend='mtcnn'
+                    )
+
+                    live_analysis = analyze_face(frame)
+
+                    if result['verified']:
+                        st.success("Identity Verified Successfully! ✅")
+                        
+                        attendance_data = {
+                            'employee_id': employee_id,
+                            'name': employee_data['name'],
+                            'registered_gender': employee_data['registered_gender'],
+                            'verified_gender': live_analysis['gender'] if live_analysis else 'Unknown',
+                            'gender_confidence': live_analysis.get('gender_confidence', 0) if live_analysis else 0,
+                            'confidence': (1 - result['distance']) * 100,
+                            'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        }
+                        
+                        save_to_csv(attendance_data, 'attendance_log.csv')
+                        
+                        st.write("### Verification Details")
+                        st.write(f"- Name: {employee_data['name']}")
+                        st.write(f"- Registered Gender: {employee_data['registered_gender']}")
+                        if live_analysis:
+                            st.write(f"- Verified Gender: {live_analysis['gender']} "
+                                   f"({live_analysis.get('gender_confidence', 100):.2f}% confidence)")
+                        st.write(f"- Verification Confidence: {attendance_data['confidence']:.2f}%")
+                        st.write(f"- Timestamp: {attendance_data['timestamp']}")
+                    else:
+                        st.error("Verification Failed! Identity mismatch. ❌")
+                except Exception as e:
+                    st.error("Verification failed. Please try again.")
+                finally:
+                    os.remove(temp_path)
+                break
+    finally:
+        camera.release()
+
+def view_attendance():
+    """View attendance records"""
+    st.title("🏢 Company Attendance System")
+    st.header("📊 Attendance Records")
+
+    if os.path.exists('attendance_log.csv'):
+        try:
+            df = pd.read_csv('attendance_log.csv')
+            
+            st.subheader("Filters")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                selected_date = st.date_input("Select Date", datetime.now())
+            
+            with col2:
+                gender_column = 'registered_gender'
+                if gender_column in df.columns and not df[gender_column].empty:
+                    selected_gender = st.selectbox(
+                        "Select Gender",
+                        ['All'] + df[gender_column].dropna().unique().tolist()
+                    )
+                else:
+                    selected_gender = 'All'
+            
+            filtered_df = df.copy()
+            
+            if 'timestamp' in filtered_df.columns:
+                filtered_df['date'] = pd.to_datetime(filtered_df['timestamp']).dt.date
+                filtered_df = filtered_df[filtered_df['date'] == selected_date]
+            
+            if selected_gender != 'All' and gender_column in filtered_df.columns:
+                filtered_df = filtered_df[filtered_df[gender_column] == selected_gender]
+            
+            st.dataframe(filtered_df)
+
+            csv = filtered_df.to_csv(index=False)
+            st.download_button(
+                label="Download Filtered Attendance Log",
+                data=csv,
+                file_name=f"attendance_log_{selected_date}.csv",
+                mime="text/csv"
+            )
+            
+            st.subheader("Daily Statistics")
+            st.write(f"Total Attendance: {len(filtered_df)}")
+            
+            if gender_column in filtered_df.columns and not filtered_df[gender_column].empty:
+                st.write("Gender Distribution:")
+                st.write(filtered_df[gender_column].value_counts())
+        except:
+            initialize_csv_files()
+            st.info("No attendance records found.")
+    else:
+        initialize_csv_files()
+        st.info("No attendance records found.")
 
 def main():
-    st.title("🎯 Advanced Face Verification System")
+    """Main app logic"""
+    st.set_page_config(page_title="Company Attendance System", page_icon="🏢")
     
-    # Sidebar for file upload
-    with st.sidebar:
-        st.header("📤 Upload Reference Image")
-        uploaded_file = st.file_uploader("Choose an image...", type=['jpg', 'jpeg', 'png'])
-        
-        if uploaded_file is not None:
-            st.image(uploaded_file, caption="Reference Image", use_container_width=True)
-            
-            # Save uploaded file
-            filename = secure_filename(uploaded_file.name)
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            with open(filepath, 'wb') as f:
-                f.write(uploaded_file.getvalue())
+    # Initialize CSV files if they don't exist
+    initialize_csv_files()
     
-    if uploaded_file is not None:
-        # Main content area - split into two columns
-        col1, col2 = st.columns([2, 1])
-        
-        with col1:
-            st.header("📹 Live Camera Feed")
-            # Placeholder for webcam feed
-            frame_placeholder = st.empty()
-            
-            # Verification results placeholder
-            results_placeholder = st.empty()
-            
-            # Capture and verify button
-            if st.button("🔍 Capture and Verify", key="verify_button"):
-                current_frame = capture_frame()
-                if current_frame is not None:
-                    # Display captured frame
-                    frame_placeholder.image(current_frame, channels="RGB", use_container_width=True)
-                    
-                    # Perform verification
-                    verification_result = verify_faces(filepath, current_frame)
-                    
-                    if verification_result:
-                        # Add timestamp to result
-                        verification_result['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        verification_result['reference_name'] = os.path.splitext(filename)[0]
-                        
-                        # Add to history
-                        st.session_state.verification_history.insert(0, verification_result)
-                        
-                        # Display results
-                        results_container = results_placeholder.container()
-                        with results_container:
-                            st.markdown("### 📊 Verification Results")
-                            cols = st.columns(2)
-                            with cols[0]:
-                                st.metric("Match Status", "✅ Verified" if verification_result['verified'] else "❌ Not Verified")
-                                st.metric("Reference Name", verification_result['reference_name'])
-                                st.metric("Similarity Distance", f"{verification_result['distance']:.4f}")
-                            with cols[1]:
-                                st.metric("Estimated Age", f"{verification_result['age']}")
-                                # Display gender with probability
-                                if 'gender_dict' in verification_result:
-                                    gender_info = format_gender_info(verification_result['gender_dict'])
-                                else:
-                                    gender_info = verification_result['gender']
-                                st.metric("Gender", gender_info)
-                                st.metric("Dominant Race", verification_result['dominant_race'])
-                                st.metric("Dominant Emotion", verification_result['dominant_emotion'])
-            
-            # Live preview
-            while True:
-                current_frame = capture_frame()
-                if current_frame is not None:
-                    frame_placeholder.image(current_frame, channels="RGB", use_container_width=True)
-                time.sleep(0.1)
-                
-        with col2:
-            st.header("📝 Verification History")
-            for idx, result in enumerate(st.session_state.verification_history):
-                with st.expander(f"Verification {idx + 1} - {result['timestamp']}", expanded=(idx == 0)):
-                    st.write(f"**Status:** {'✅ Verified' if result['verified'] else '❌ Not Verified'}")
-                    st.write(f"**Reference:** {result['reference_name']}")
-                    st.write(f"**Distance:** {result['distance']:.4f}")
-                    st.write(f"**Age:** {result['age']} years")
-                    if 'gender_dict' in result:
-                        st.write(f"**Gender:** {format_gender_info(result['gender_dict'])}")
-                    else:
-                        st.write(f"**Gender:** {result['gender']}")
-                    st.write(f"**Race:** {result['dominant_race']}")
-                    st.write(f"**Emotion:** {result['dominant_emotion']}")
-            
-    else:
-        st.info("👆 Please upload a reference image in the sidebar to start face verification.")
+    if 'registered_users' not in st.session_state or not st.session_state.registered_users:
+        st.session_state.registered_users = load_registered_users()
 
-if __name__ == '__main__':
+    menu = st.sidebar.radio(
+        "Navigation",
+        ["Register Employee", "Verify Attendance", "View Attendance Log"]
+    )
+
+    if menu == "Register Employee":
+        register_new_employee()
+    elif menu == "Verify Attendance":
+        verify_employee()
+    elif menu == "View Attendance Log":
+        view_attendance()
+
+if __name__ == "__main__":
     main()
