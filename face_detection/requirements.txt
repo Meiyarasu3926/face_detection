@@ -1,14 +1,14 @@
-streamlit>=1.28.0
-opencv-python>=4.8.0
-deepface>=0.0.79
-pandas>=2.1.0
-numpy>=1.24.0
-Pillow>=10.0.0
-tensorflow>=2.13.0  # Required by deepface
-mtcnn>=0.1.1       # Required for face detection
-keras>=2.13.0      # Required by deepface
-mediapipe>=0.10.0  # Required for improved face detection
-retina-face>=0.0.13 # Alternative face detector
+streamlit
+opencv-python
+deepface
+pandas
+numpy
+Pillow
+tensorflow
+mtcnn
+keras
+mediapipe
+retina-face
 streamlit-webrtc
 opencv-python-headless
 
