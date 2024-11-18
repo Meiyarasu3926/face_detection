@@ -9,3 +9,6 @@ mtcnn>=0.1.1       # Required for face detection
 keras>=2.13.0      # Required by deepface
 mediapipe>=0.10.0  # Required for improved face detection
 retina-face>=0.0.13 # Alternative face detector
+streamlit-webrtc
+opencv-python-headless
+
